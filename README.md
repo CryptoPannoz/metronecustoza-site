@@ -5,6 +5,17 @@ Statico, in tre lingue (IT · EN · DE), con calendario della disponibilità e r
 
 Anteprima: https://cryptopannoz.github.io/metronecustoza-site/
 
+## Design
+
+Il sito è impaginato come **un libro antico sulla casa**:
+- **Frontespizio** con il titolo in Bodoni Moda, la facciata in una finestra ad arco e un sigillo di ceralacca con la M (anche favicon e logo).
+- **Sei capitoli** in numeri romani (I La casa · II Le stanze · III Inventario · IV Accoglienza · V Dintorni · VI Soggiornare); su schermi larghi il capitolo corrente scorre in verticale sul margine sinistro, come la testatina di un libro.
+- Le foto sono **tavole numerate** (Tav. I–XII) montate su passe-partout; le camere scorrono in orizzontale.
+- L'**inventario** dei servizi è un registro con puntini di guida; l'**indice** (menu) è un sommario a tutta pagina.
+- I **dintorni** sono una carta in stile incisione generata in SVG da coordinate reali (`src/map.mjs`): sponde del Garda con le linee d'acqua, Mincio e Adige, colline moreniche, rosa dei venti, scala in km. Passando sull'elenco delle distanze si illumina il luogo sulla carta.
+- La **prenotazione** è una lettera a Francesca da completare (nome, date, ospiti, contatti inseriti nel testo), che si chiude con il sigillo.
+- Caratteri: Bodoni Moda (titoli) ed EB Garamond (testo), self-hosted. Palette: carta avorio, inchiostro, verde persiana, rosso ceralacca.
+
 ## Struttura
 
 ```
@@ -12,6 +23,8 @@ build.mjs              genera docs/ (nessuna dipendenza, Node 18+)
 src/site.mjs           configurazione: URL, contatti, CIN, endpoint booking, percorsi per lingua
 src/content/*.mjs      tutti i testi, una lingua per file
 src/templates.mjs      HTML delle pagine (home, prenota, faq, privacy, 404)
+src/map.mjs            carta dei dintorni in SVG (proiezione da lat/long)
+src/icons.mjs          icone, sigillo di ceralacca, fregio, numeri romani
 src/photos.mjs         elenco foto con dimensioni e testi alternativi
 src/assets/            css, js, font (self-hosted), immagini WebP generate
 photos/                foto originali (sorgente per tools/images.py)

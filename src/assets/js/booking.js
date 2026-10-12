@@ -1,4 +1,4 @@
-// Il Metrone — calendario disponibilità e richiesta di prenotazione.
+// Il Metrone — calendario disponibilità e richiesta di prenotazione in forma di lettera.
 // GET  endpoint -> [{from:'YYYY-MM-DD', to:'YYYY-MM-DD'}] notti occupate (to = giorno di partenza, libero)
 // POST endpoint -> registra la richiesta nel foglio [MASTER] e invia le email (risposta opaca, mode no-cors)
 (() => {
@@ -10,6 +10,7 @@
   const t = cfg.t;
   const fill = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* date come stringhe 'YYYY-MM-DD'; i calcoli in UTC evitano sorprese con l'ora legale */
   const iso = (y, m, d) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
@@ -21,12 +22,14 @@
   const maxDate = addDays(today, 730);
 
   const fmt = (opts) => new Intl.DateTimeFormat(cfg.locale, { timeZone: 'UTC', ...opts });
-  const fmtShort = fmt({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const fmtShort = fmt({ weekday: 'short', day: 'numeric', month: 'short' });
   const fmtMonth = fmt({ month: 'long', year: 'numeric' });
   const fmtLabel = fmt({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const fmtLetter = fmt({ weekday: 'long', day: 'numeric', month: 'long' });
+  const fmtLetterYear = fmt({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const fmtToday = fmt({ day: 'numeric', month: 'long', year: 'numeric' });
   const fmtWd = fmt({ weekday: 'short' });
   const weekdays = Array.from({ length: 7 }, (_, i) => fmtWd.format(new Date(Date.UTC(2024, 0, 1 + i)))); // 1/1/2024 = lunedì
-  const human = (s) => fmtShort.format(parse(s));
   const sheetDate = (s) => s.split('-').reverse().join('/');
   const nightsLabel = (n) => `${n} ${n === 1 ? t.night : t.nights}`;
 
@@ -41,14 +44,16 @@
   const clearBtn = $('[data-clear]');
   const contBtn = $('[data-continue]');
   const form = $('form[data-step="guests"]');
-  const chosen = $('[data-chosen]');
   const guestsError = $('[data-guests-error]');
   const sendError = $('[data-send-error]');
   const submitBtn = $('[data-submit]');
+  const submitLabel = $('[data-submit-label]');
   const doneText = $('[data-done-text]');
   const panels = { dates: $('[data-step="dates"]'), guests: form, done: $('[data-step="done"]') };
   const stepLabels = root.querySelectorAll('[data-step-label]');
   const double = window.matchMedia('(min-width: 720px)');
+
+  $('[data-letter-today]').textContent = fmtToday.format(parse(today));
 
   const state = {
     booked: new Set(),
@@ -67,15 +72,13 @@
     for (let i = 0; i < cfg.minNights; i++) if (state.booked.has(addDays(date, i))) return false;
     return true;
   };
-
   const checkoutLimit = (start) => {
     for (let d = addDays(start, 1); d <= maxDate; d = addDays(d, 1)) if (state.booked.has(d)) return d;
     return maxDate;
   };
-
   const picking = () => Boolean(state.checkIn && !state.checkOut);
 
-  /* ---------- disegno del calendario ---------- */
+  /* ---------- calendario ---------- */
 
   function dayCell(date) {
     const past = date < today;
@@ -102,16 +105,9 @@
 
     let selected = false;
     if (state.checkIn) {
-      if (date === state.checkIn) {
-        cls.push('is-start');
-        selected = true;
-        if (state.checkOut) cls.push('has-range');
-      } else if (state.checkOut && date === state.checkOut) {
-        cls.push('is-end');
-        selected = true;
-      } else if (state.checkOut && date > state.checkIn && date < state.checkOut) {
-        cls.push('is-range');
-      }
+      if (date === state.checkIn) { cls.push('is-start'); selected = true; }
+      else if (state.checkOut && date === state.checkOut) { cls.push('is-end'); selected = true; }
+      else if (state.checkOut && date > state.checkIn && date < state.checkOut) cls.push('is-range');
     }
 
     const label = fmtLabel.format(parse(date)) + (enabled || selected ? '' : `, ${t.unavailable}`);
@@ -144,8 +140,8 @@
     prevBtn.disabled = state.view.y === now.getFullYear() && state.view.m === now.getMonth();
     nextBtn.disabled = lastShown >= maxDate.slice(0, 7);
 
-    outIn.textContent = state.checkIn ? human(state.checkIn) : '—';
-    outOut.textContent = state.checkOut ? human(state.checkOut) : '—';
+    outIn.textContent = state.checkIn ? fmtShort.format(parse(state.checkIn)) : '—';
+    outOut.textContent = state.checkOut ? fmtShort.format(parse(state.checkOut)) : '—';
     contBtn.disabled = !(state.checkIn && state.checkOut);
     clearBtn.hidden = !state.checkIn;
   }
@@ -156,7 +152,6 @@
       const d = btn.dataset.date;
       btn.classList.toggle('is-hover', Boolean(h) && d > state.checkIn && d < h);
       btn.classList.toggle('is-end', Boolean(h) && d === h);
-      if (d === state.checkIn) btn.classList.toggle('has-range', Boolean(h));
     });
   }
 
@@ -167,8 +162,6 @@
     else if (!state.checkOut) hint.textContent = fill(t.hintCheckout, { n: cfg.minNights });
     else hint.textContent = `${nightsLabel(diff(state.checkIn, state.checkOut))} · ${t.hintReady}`;
   }
-
-  /* ---------- interazione ---------- */
 
   function pick(date) {
     let error = '';
@@ -194,7 +187,6 @@
     const btn = e.target.closest('.cal-day[data-date]');
     if (btn && !btn.disabled) pick(btn.dataset.date);
   });
-
   monthsEl.addEventListener('pointerover', (e) => {
     if (e.pointerType !== 'mouse' || !picking()) return;
     const btn = e.target.closest('.cal-day[data-date]');
@@ -202,8 +194,6 @@
     if (date !== state.hover) { state.hover = date; paintHover(); }
   });
   monthsEl.addEventListener('pointerleave', () => { if (state.hover) { state.hover = null; paintHover(); } });
-
-  // frecce della tastiera tra i giorni visibili
   monthsEl.addEventListener('keydown', (e) => {
     const steps = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
     const btn = e.target.closest('.cal-day[data-date]');
@@ -226,13 +216,7 @@
   prevBtn.addEventListener('click', () => shiftMonth(-1));
   nextBtn.addEventListener('click', () => shiftMonth(1));
   double.addEventListener('change', render);
-
-  clearBtn.addEventListener('click', () => {
-    state.checkIn = null;
-    state.checkOut = null;
-    render();
-    setHint();
-  });
+  clearBtn.addEventListener('click', () => { state.checkIn = null; state.checkOut = null; render(); setHint(); });
 
   /* ---------- passi ---------- */
 
@@ -244,28 +228,36 @@
       li.classList.toggle('is-done', (key === 'dates' && step !== 'dates') || (key === 'guests' && step === 'done'));
     });
     const top = root.getBoundingClientRect().top;
-    if (top < 0) window.scrollTo({ top: window.scrollY + top - 96, behavior: 'smooth' });
+    if (top < 80) window.scrollTo({ top: window.scrollY + top - 110, behavior: reduced ? 'auto' : 'smooth' });
   }
 
   contBtn.addEventListener('click', () => {
     if (!(state.checkIn && state.checkOut)) return;
-    chosen.textContent = `${human(state.checkIn)} → ${human(state.checkOut)} · ${nightsLabel(diff(state.checkIn, state.checkOut))}`;
+    $('[data-letter-from]').textContent = fmtLetter.format(parse(state.checkIn));
+    $('[data-letter-to]').textContent = fmtLetterYear.format(parse(state.checkOut));
+    $('[data-letter-nights]').textContent = nightsLabel(diff(state.checkIn, state.checkOut));
     go('guests');
     form.elements.name.focus({ preventScroll: true });
   });
   $('[data-back]').addEventListener('click', () => go('dates'));
 
+  // singolare/plurale nella lettera ("1 adulto", "2 adulti")
+  const syncWords = () => {
+    root.querySelectorAll('[data-word]').forEach((w) => {
+      const n = Number(form.elements[w.dataset.word].value);
+      w.textContent = n === 1 ? w.dataset.one : w.dataset.many;
+    });
+  };
   const totalGuests = () => Number(form.elements.adults.value) + Number(form.elements.children.value);
   const checkGuests = () => {
     const ok = totalGuests() <= cfg.maxGuests;
     guestsError.hidden = ok;
     return ok;
   };
-  form.elements.adults.addEventListener('change', checkGuests);
-  form.elements.children.addEventListener('change', checkGuests);
+  ['adults', 'children'].forEach((name) => form.elements[name].addEventListener('change', () => { syncWords(); checkGuests(); }));
 
   function mailtoHref(payload) {
-    const body = [
+    const lines = [
       `${t.checkin}: ${payload.checkIn}`,
       `${t.checkout}: ${payload.checkOut}`,
       `${t.adults}: ${payload.adults} · ${t.children}: ${payload.children}`,
@@ -273,8 +265,8 @@
       `${t.phone}: ${payload.guestPhone}`,
       '',
       payload.specialRequests,
-    ].join('\n');
-    return `mailto:${cfg.email}?subject=${encodeURIComponent(`Il Metrone · ${payload.checkIn} – ${payload.checkOut}`)}&body=${encodeURIComponent(body)}`;
+    ];
+    return `mailto:${cfg.email}?subject=${encodeURIComponent(`Il Metrone · ${payload.checkIn} – ${payload.checkOut}`)}&body=${encodeURIComponent(lines.join('\n'))}`;
   }
 
   function showDone(email) {
@@ -286,6 +278,7 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     sendError.hidden = true;
+    form.classList.add('was-validated');
     if (!form.checkValidity()) { form.reportValidity(); return; }
     if (!checkGuests()) return;
 
@@ -313,7 +306,7 @@
     };
 
     submitBtn.disabled = true;
-    submitBtn.textContent = t.sending;
+    submitLabel.textContent = t.sending;
     try {
       await fetch(cfg.endpoint, {
         method: 'POST',
@@ -327,12 +320,14 @@
       sendError.hidden = false;
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = t.send;
+      submitLabel.textContent = t.send;
     }
   });
 
   $('[data-again]').addEventListener('click', () => {
     form.reset();
+    form.classList.remove('was-validated');
+    syncWords();
     state.checkIn = null;
     state.checkOut = null;
     render();
