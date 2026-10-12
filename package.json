@@ -1,0 +1,9 @@
+{
+  "name": "metronecustoza-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "images": "python3 tools/images.py"
+  }
+}
